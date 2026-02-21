@@ -1,0 +1,2 @@
+BACKUP_DIR="/path/to/backup"
+CLONE_PROTOCOL="https"  # "https" or "ssh"

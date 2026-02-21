@@ -1,7 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BACKUP_DIR="/mnt/usb/GithubBackup"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_FILE="$SCRIPT_DIR/backup.conf"
+
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo "ERROR: Config file not found: $CONFIG_FILE" >&2
+    echo "Create it from backup.conf.example" >&2
+    exit 1
+fi
+source "$CONFIG_FILE"
+
+# Defaults
+BACKUP_DIR="${BACKUP_DIR:-/mnt/usb/GithubBackup}"
+CLONE_PROTOCOL="${CLONE_PROTOCOL:-https}"
+
+if [[ "$CLONE_PROTOCOL" != "https" && "$CLONE_PROTOCOL" != "ssh" ]]; then
+    echo "ERROR: CLONE_PROTOCOL must be 'https' or 'ssh', got '$CLONE_PROTOCOL'" >&2
+    exit 1
+fi
 
 # --- Verify prerequisites ---
 if ! command -v gh &>/dev/null; then
@@ -76,7 +93,12 @@ for full_name in "${repos[@]}"; do
         fi
     else
         echo "Cloning $full_name ..."
-        if git clone "https://github.com/$full_name.git" "$target" --quiet 2>&1; then
+        if [[ "$CLONE_PROTOCOL" == "ssh" ]]; then
+            clone_url="git@github.com:$full_name.git"
+        else
+            clone_url="https://github.com/$full_name.git"
+        fi
+        if git clone "$clone_url" "$target" --quiet 2>&1; then
             cloned=$((cloned + 1))
         else
             echo "  FAILED to clone $full_name" >&2
