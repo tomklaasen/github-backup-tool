@@ -109,9 +109,7 @@ failed=0
 failed_repos=()
 
 for full_name in "${repos[@]}"; do
-    # repo name is the part after the slash
-    repo_name="${full_name#*/}"
-    target="$BACKUP_DIR/$repo_name"
+    target="$BACKUP_DIR/$full_name"
 
     if [[ -d "$target/.git" ]]; then
         log "Updating $full_name ..."
