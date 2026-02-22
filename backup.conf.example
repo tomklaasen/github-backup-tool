@@ -5,3 +5,6 @@ CLONE_PROTOCOL="https"  # "https" or "ssh"
 LOG_FILE=""              # e.g. "/var/log/github-backup.log"
 LOG_MAX_SIZE_KB="10240"  # rotate when log exceeds this size (default 10 MB)
 LOG_KEEP="5"             # number of rotated files to keep
+
+# Healthchecks.io (optional – leave empty to disable)
+HC_PING_URL=""           # e.g. "https://hc-ping.com/your-uuid-here"

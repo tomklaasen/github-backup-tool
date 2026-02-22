@@ -25,6 +25,7 @@ A bash script that backs up all your GitHub repositories (personal and organizat
 | `LOG_FILE` | *(empty)* | Path to log file. If empty, output goes to stdout |
 | `LOG_MAX_SIZE_KB` | `10240` | Rotate the log when it exceeds this size (KB) |
 | `LOG_KEEP` | `5` | Number of rotated log files to keep |
+| `HC_PING_URL` | *(empty)* | [Healthchecks.io](https://healthchecks.io) ping URL. If empty, health checks are disabled |
 
 ## Usage
 
@@ -49,3 +50,14 @@ Set `LOG_FILE` in `backup.conf` and run daily at 2 AM:
 
 All output is timestamped. When the log file exceeds `LOG_MAX_SIZE_KB`, it is
 automatically rotated (e.g. `cron.log` → `cron.log.1` → … → `cron.log.5`).
+
+### Healthchecks.io
+
+To get notified when backups fail or stop running:
+
+1. Create a free account at [healthchecks.io](https://healthchecks.io)
+2. Add a new check with a schedule matching your cron interval (e.g. daily)
+3. Copy the ping URL and set `HC_PING_URL` in `backup.conf`
+
+The script pings `/start` before the backup loop, then either the success URL or
+`/fail` depending on the result.

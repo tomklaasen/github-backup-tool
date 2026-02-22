@@ -17,6 +17,7 @@ CLONE_PROTOCOL="${CLONE_PROTOCOL:-https}"
 LOG_FILE="${LOG_FILE:-}"
 LOG_MAX_SIZE_KB="${LOG_MAX_SIZE_KB:-10240}"
 LOG_KEEP="${LOG_KEEP:-5}"
+HC_PING_URL="${HC_PING_URL:-}"
 
 if [[ "$CLONE_PROTOCOL" != "https" && "$CLONE_PROTOCOL" != "ssh" ]]; then
     echo "ERROR: CLONE_PROTOCOL must be 'https' or 'ssh', got '$CLONE_PROTOCOL'" >&2
@@ -26,6 +27,15 @@ fi
 # --- Logging ---
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+}
+
+hc_ping() {
+    if [[ -n "$HC_PING_URL" ]]; then
+        local suffix="${1:-}"
+        local url="$HC_PING_URL"
+        [[ -n "$suffix" ]] && url="$url/$suffix"
+        curl -fsS --max-time 10 --retry 3 "$url" > /dev/null 2>&1 || true
+    fi
 }
 
 # --- Log rotation ---
@@ -102,6 +112,8 @@ mapfile -t repos < <(printf '%s\n' "${repos[@]}" | sort -u)
 log "Total unique repos: ${#repos[@]}"
 echo
 
+hc_ping start
+
 # --- Backup each repo ---
 cloned=0
 updated=0
@@ -149,4 +161,7 @@ if [[ ${#failed_repos[@]} -gt 0 ]]; then
     for r in "${failed_repos[@]}"; do
         log "  - $r"
     done
+    hc_ping fail
+else
+    hc_ping
 fi
