@@ -77,7 +77,7 @@ repos=()
 # Personal repos
 while IFS= read -r repo; do
     repos+=("$repo")
-done < <(gh repo list --limit 1000 --json nameWithOwner --jq '.[].nameWithOwner')
+done < <(gh repo list --limit 4000 --json nameWithOwner --jq '.[].nameWithOwner')
 
 log "Found ${#repos[@]} personal repos."
 
@@ -92,7 +92,7 @@ for org in "${orgs[@]}"; do
     count_before=${#repos[@]}
     while IFS= read -r repo; do
         repos+=("$repo")
-    done < <(gh repo list "$org" --limit 1000 --json nameWithOwner --jq '.[].nameWithOwner')
+    done < <(gh repo list "$org" --limit 4000 --json nameWithOwner --jq '.[].nameWithOwner')
     log "Found $(( ${#repos[@]} - count_before )) repos in org '$org'."
 done
 
@@ -111,9 +111,15 @@ failed_repos=()
 for full_name in "${repos[@]}"; do
     target="$BACKUP_DIR/$full_name"
 
-    if [[ -d "$target/.git" ]]; then
+    if [[ "$CLONE_PROTOCOL" == "ssh" ]]; then
+        clone_url="git@github.com:$full_name.git"
+    else
+        clone_url="https://github.com/$full_name.git"
+    fi
+
+    if [[ -d "$target" ]]; then
         log "Updating $full_name ..."
-        if (cd "$target" && git fetch --all --quiet && git pull --quiet) 2>&1; then
+        if git -C "$target" remote update --prune 2>&1; then
             updated=$((updated + 1))
         else
             log "  FAILED to update $full_name"
@@ -122,12 +128,7 @@ for full_name in "${repos[@]}"; do
         fi
     else
         log "Cloning $full_name ..."
-        if [[ "$CLONE_PROTOCOL" == "ssh" ]]; then
-            clone_url="git@github.com:$full_name.git"
-        else
-            clone_url="https://github.com/$full_name.git"
-        fi
-        if git clone "$clone_url" "$target" --quiet 2>&1; then
+        if git clone --mirror "$clone_url" "$target" --quiet 2>&1; then
             cloned=$((cloned + 1))
         else
             log "  FAILED to clone $full_name"

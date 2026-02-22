@@ -35,8 +35,8 @@ A bash script that backs up all your GitHub repositories (personal and organizat
 The script will:
 
 1. Fetch all your personal repos and repos from your GitHub organizations
-2. Clone new repos into `<BACKUP_DIR>/<owner>/<repo-name>/`
-3. Update existing repos with `git fetch --all` + `git pull`
+2. Mirror-clone new repos into `<BACKUP_DIR>/<owner>/<repo-name>/` (all branches, tags, and refs)
+3. Update existing mirrors with `git remote update --prune`
 4. Print a summary of cloned, updated, and failed repos
 
 ### Cron example
