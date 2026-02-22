@@ -22,6 +22,9 @@ A bash script that backs up all your GitHub repositories (personal and organizat
 |---|---|---|
 | `BACKUP_DIR` | `/path/to/backup` | Directory where repos are cloned |
 | `CLONE_PROTOCOL` | `https` | `https` or `ssh` |
+| `LOG_FILE` | *(empty)* | Path to log file. If empty, output goes to stdout |
+| `LOG_MAX_SIZE_KB` | `10240` | Rotate the log when it exceeds this size (KB) |
+| `LOG_KEEP` | `5` | Number of rotated log files to keep |
 
 ## Usage
 
@@ -38,8 +41,11 @@ The script will:
 
 ### Cron example
 
-Run daily at 2 AM:
+Set `LOG_FILE` in `backup.conf` and run daily at 2 AM:
 
 ```
-0 2 * * * /path/to/backup.sh >> /var/log/github-backup.log 2>&1
+0 2 * * * /path/to/backup.sh
 ```
+
+All output is timestamped. When the log file exceeds `LOG_MAX_SIZE_KB`, it is
+automatically rotated (e.g. `cron.log` → `cron.log.1` → … → `cron.log.5`).

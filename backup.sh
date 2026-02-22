@@ -14,32 +14,63 @@ source "$CONFIG_FILE"
 # Defaults
 BACKUP_DIR="${BACKUP_DIR:-/mnt/usb/GithubBackup}"
 CLONE_PROTOCOL="${CLONE_PROTOCOL:-https}"
+LOG_FILE="${LOG_FILE:-}"
+LOG_MAX_SIZE_KB="${LOG_MAX_SIZE_KB:-10240}"
+LOG_KEEP="${LOG_KEEP:-5}"
 
 if [[ "$CLONE_PROTOCOL" != "https" && "$CLONE_PROTOCOL" != "ssh" ]]; then
     echo "ERROR: CLONE_PROTOCOL must be 'https' or 'ssh', got '$CLONE_PROTOCOL'" >&2
     exit 1
 fi
 
+# --- Logging ---
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+}
+
+# --- Log rotation ---
+rotate_logs() {
+    local log_file="$1"
+    [[ ! -f "$log_file" ]] && return
+
+    local size_kb
+    size_kb=$(du -k "$log_file" | cut -f1)
+
+    if (( size_kb >= LOG_MAX_SIZE_KB )); then
+        [[ -f "$log_file.$LOG_KEEP" ]] && rm -f "$log_file.$LOG_KEEP"
+        for (( i = LOG_KEEP - 1; i >= 1; i-- )); do
+            [[ -f "$log_file.$i" ]] && mv "$log_file.$i" "$log_file.$((i + 1))"
+        done
+        mv "$log_file" "$log_file.1"
+    fi
+}
+
+# Set up file logging if LOG_FILE is configured
+if [[ -n "$LOG_FILE" ]]; then
+    rotate_logs "$LOG_FILE"
+    exec >> "$LOG_FILE" 2>&1
+fi
+
 # --- Verify prerequisites ---
 if ! command -v gh &>/dev/null; then
-    echo "ERROR: gh CLI is not installed. Install it with: sudo apt install gh" >&2
+    log "ERROR: gh CLI is not installed. Install it with: sudo apt install gh"
     exit 1
 fi
 
 if ! gh auth status &>/dev/null; then
-    echo "ERROR: gh CLI is not authenticated. Run: gh auth login" >&2
+    log "ERROR: gh CLI is not authenticated. Run: gh auth login"
     exit 1
 fi
 
 if ! command -v git &>/dev/null; then
-    echo "ERROR: git is not installed." >&2
+    log "ERROR: git is not installed."
     exit 1
 fi
 
 mkdir -p "$BACKUP_DIR"
 
 # --- Collect all repos ---
-echo "Fetching repository list..."
+log "Fetching repository list..."
 
 repos=()
 
@@ -48,7 +79,7 @@ while IFS= read -r repo; do
     repos+=("$repo")
 done < <(gh repo list --limit 1000 --json nameWithOwner --jq '.[].nameWithOwner')
 
-echo "Found ${#repos[@]} personal repos."
+log "Found ${#repos[@]} personal repos."
 
 # Org repos
 orgs=()
@@ -62,14 +93,14 @@ for org in "${orgs[@]}"; do
     while IFS= read -r repo; do
         repos+=("$repo")
     done < <(gh repo list "$org" --limit 1000 --json nameWithOwner --jq '.[].nameWithOwner')
-    echo "Found $(( ${#repos[@]} - count_before )) repos in org '$org'."
+    log "Found $(( ${#repos[@]} - count_before )) repos in org '$org'."
 done
 
 # Deduplicate
 mapfile -t repos < <(printf '%s\n' "${repos[@]}" | sort -u)
 
-echo "Total unique repos: ${#repos[@]}"
-echo ""
+log "Total unique repos: ${#repos[@]}"
+echo
 
 # --- Backup each repo ---
 cloned=0
@@ -83,16 +114,16 @@ for full_name in "${repos[@]}"; do
     target="$BACKUP_DIR/$repo_name"
 
     if [[ -d "$target/.git" ]]; then
-        echo "Updating $full_name ..."
+        log "Updating $full_name ..."
         if (cd "$target" && git fetch --all --quiet && git pull --quiet) 2>&1; then
             updated=$((updated + 1))
         else
-            echo "  FAILED to update $full_name" >&2
+            log "  FAILED to update $full_name"
             failed=$((failed + 1))
             failed_repos+=("$full_name")
         fi
     else
-        echo "Cloning $full_name ..."
+        log "Cloning $full_name ..."
         if [[ "$CLONE_PROTOCOL" == "ssh" ]]; then
             clone_url="git@github.com:$full_name.git"
         else
@@ -101,7 +132,7 @@ for full_name in "${repos[@]}"; do
         if git clone "$clone_url" "$target" --quiet 2>&1; then
             cloned=$((cloned + 1))
         else
-            echo "  FAILED to clone $full_name" >&2
+            log "  FAILED to clone $full_name"
             failed=$((failed + 1))
             failed_repos+=("$full_name")
         fi
@@ -109,14 +140,14 @@ for full_name in "${repos[@]}"; do
 done
 
 # --- Summary ---
-echo ""
-echo "===== Backup complete ====="
-echo "Cloned:  $cloned new"
-echo "Updated: $updated existing"
-echo "Failed:  $failed"
+echo
+log "===== Backup complete ====="
+log "Cloned:  $cloned new"
+log "Updated: $updated existing"
+log "Failed:  $failed"
 if [[ ${#failed_repos[@]} -gt 0 ]]; then
-    echo "Failed repos:"
+    log "Failed repos:"
     for r in "${failed_repos[@]}"; do
-        echo "  - $r"
+        log "  - $r"
     done
 fi
