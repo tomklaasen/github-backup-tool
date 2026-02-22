@@ -32,9 +32,14 @@ log() {
 hc_ping() {
     if [[ -n "$HC_PING_URL" ]]; then
         local suffix="${1:-}"
+        local body="${2:-}"
         local url="$HC_PING_URL"
         [[ -n "$suffix" ]] && url="$url/$suffix"
-        curl -fsS --max-time 10 --retry 3 "$url" > /dev/null 2>&1 || true
+        if [[ -n "$body" ]]; then
+            curl -fsS --max-time 10 --retry 3 --data-raw "$body" "$url" > /dev/null 2>&1 || true
+        else
+            curl -fsS --max-time 10 --retry 3 "$url" > /dev/null 2>&1 || true
+        fi
     fi
 }
 
@@ -74,6 +79,11 @@ fi
 
 if ! command -v git &>/dev/null; then
     log "ERROR: git is not installed."
+    exit 1
+fi
+
+if [[ -n "$HC_PING_URL" ]] && ! command -v curl &>/dev/null; then
+    log "ERROR: curl is not installed (required for HC_PING_URL)."
     exit 1
 fi
 
@@ -156,12 +166,14 @@ log "===== Backup complete ====="
 log "Cloned:  $cloned new"
 log "Updated: $updated existing"
 log "Failed:  $failed"
+summary="Cloned: $cloned new, Updated: $updated existing, Failed: $failed"
 if [[ ${#failed_repos[@]} -gt 0 ]]; then
     log "Failed repos:"
     for r in "${failed_repos[@]}"; do
         log "  - $r"
+        summary+=$'\n'"  - $r"
     done
-    hc_ping fail
+    hc_ping fail "$summary"
 else
-    hc_ping
+    hc_ping "" "$summary"
 fi
