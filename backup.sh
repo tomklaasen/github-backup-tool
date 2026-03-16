@@ -18,6 +18,7 @@ LOG_FILE="${LOG_FILE:-}"
 LOG_MAX_SIZE_KB="${LOG_MAX_SIZE_KB:-10240}"
 LOG_KEEP="${LOG_KEEP:-5}"
 HC_PING_URL="${HC_PING_URL:-}"
+EXTRA_TOKENS=("${EXTRA_TOKENS[@]+"${EXTRA_TOKENS[@]}"}")
 
 if [[ "$CLONE_PROTOCOL" != "https" && "$CLONE_PROTOCOL" != "ssh" ]]; then
     echo "ERROR: CLONE_PROTOCOL must be 'https' or 'ssh', got '$CLONE_PROTOCOL'" >&2
@@ -89,37 +90,98 @@ fi
 
 mkdir -p "$BACKUP_DIR"
 
+# --- Helpers ---
+
+# Run gh with an optional token override.
+# Usage: run_gh "token" [gh args...]
+run_gh() {
+    local token="$1"; shift
+    if [[ -n "$token" ]]; then
+        GH_TOKEN="$token" gh "$@"
+    else
+        gh "$@"
+    fi
+}
+
+# Run git with an optional token override (sets GH_TOKEN so gh credential helper works).
+# Usage: run_git "token" [git args...]
+run_git() {
+    local token="$1"; shift
+    if [[ -n "$token" ]]; then
+        GH_TOKEN="$token" git "$@"
+    else
+        git "$@"
+    fi
+}
+
 # --- Collect all repos ---
 log "Fetching repository list..."
 
-repos=()
+declare -A repo_tokens
 
-# Personal repos
-while IFS= read -r repo; do
-    repos+=("$repo")
-done < <(gh repo list --limit 4000 --json nameWithOwner --jq '.[].nameWithOwner')
+# Discover repos for a given account token and add to repo_tokens.
+# Repos already in repo_tokens are skipped (first account wins).
+# Usage: list_account_repos "token"  (empty string = main gh account)
+list_account_repos() {
+    local token="$1"
+    local label
+    if [[ -n "$token" ]]; then
+        label="extra account"
+    else
+        label="main account"
+    fi
 
-log "Found ${#repos[@]} personal repos."
+    local added=0
 
-# Org repos
-orgs=()
-while IFS= read -r org; do
-    [[ -z "$org" ]] && continue
-    orgs+=("$org")
-done < <(gh api /user/orgs --jq '.[].login' 2>/dev/null || true)
-
-for org in "${orgs[@]}"; do
-    count_before=${#repos[@]}
+    # Personal repos
+    local personal=()
     while IFS= read -r repo; do
-        repos+=("$repo")
-    done < <(gh repo list "$org" --limit 4000 --json nameWithOwner --jq '.[].nameWithOwner')
-    log "Found $(( ${#repos[@]} - count_before )) repos in org '$org'."
+        [[ -z "$repo" ]] && continue
+        personal+=("$repo")
+    done < <(run_gh "$token" repo list --limit 4000 --json nameWithOwner --jq '.[].nameWithOwner')
+
+    for repo in "${personal[@]}"; do
+        if [[ -z "${repo_tokens[$repo]+x}" ]]; then
+            repo_tokens["$repo"]="$token"
+            added=$((added + 1))
+        fi
+    done
+    log "Found ${#personal[@]} personal repos for $label ($added new)."
+
+    # Org repos
+    local orgs=()
+    while IFS= read -r org; do
+        [[ -z "$org" ]] && continue
+        orgs+=("$org")
+    done < <(run_gh "$token" api /user/orgs --jq '.[].login' 2>/dev/null || true)
+
+    for org in "${orgs[@]}"; do
+        local org_repos=()
+        while IFS= read -r repo; do
+            [[ -z "$repo" ]] && continue
+            org_repos+=("$repo")
+        done < <(run_gh "$token" repo list "$org" --limit 4000 --json nameWithOwner --jq '.[].nameWithOwner')
+
+        local org_added=0
+        for repo in "${org_repos[@]}"; do
+            if [[ -z "${repo_tokens[$repo]+x}" ]]; then
+                repo_tokens["$repo"]="$token"
+                org_added=$((org_added + 1))
+            fi
+        done
+        log "Found ${#org_repos[@]} repos in org '$org' for $label ($org_added new)."
+    done
+}
+
+# Main account first (gets priority for shared repos)
+list_account_repos ""
+
+# Extra accounts
+for token in "${EXTRA_TOKENS[@]}"; do
+    list_account_repos "$token"
 done
 
-# Deduplicate
-mapfile -t repos < <(printf '%s\n' "${repos[@]}" | sort -u)
-
-log "Total unique repos: ${#repos[@]}"
+log "Total unique repos: ${#repo_tokens[@]}"
 echo
 
 hc_ping start
@@ -130,7 +192,11 @@ updated=0
 failed=0
 failed_repos=()
 
-for full_name in "${repos[@]}"; do
+# Sort repo names for deterministic order
+mapfile -t sorted_repos < <(printf '%s\n' "${!repo_tokens[@]}" | sort)
+
+for full_name in "${sorted_repos[@]}"; do
+    token="${repo_tokens[$full_name]}"
     target="$BACKUP_DIR/$full_name"
 
     if [[ "$CLONE_PROTOCOL" == "ssh" ]]; then
@@ -141,7 +207,7 @@ for full_name in "${repos[@]}"; do
 
     if [[ -d "$target" ]]; then
         log "Updating $full_name ..."
-        if git -C "$target" remote update --prune 2>&1; then
+        if run_git "$token" -C "$target" remote update --prune 2>&1; then
             updated=$((updated + 1))
         else
             log "  FAILED to update $full_name"
@@ -150,7 +216,7 @@ for full_name in "${repos[@]}"; do
         fi
     else
         log "Cloning $full_name ..."
-        if git clone --mirror "$clone_url" "$target" --quiet 2>&1; then
+        if run_git "$token" clone --mirror "$clone_url" "$target" --quiet 2>&1; then
             cloned=$((cloned + 1))
         else
             log "  FAILED to clone $full_name"

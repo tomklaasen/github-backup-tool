@@ -8,3 +8,8 @@ LOG_KEEP="5"             # number of rotated files to keep
 
 # Healthchecks.io (optional – leave empty to disable)
 HC_PING_URL=""           # e.g. "https://hc-ping.com/your-uuid-here"
+
+# Extra GitHub accounts (optional)
+# Each entry is a Personal Access Token (PAT) with "repo" scope.
+# Repos from these accounts are backed up alongside the main gh-authenticated account.
+EXTRA_TOKENS=()

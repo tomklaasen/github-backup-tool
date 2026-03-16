@@ -26,6 +26,7 @@ A bash script that backs up all your GitHub repositories (personal and organizat
 | `LOG_MAX_SIZE_KB` | `10240` | Rotate the log when it exceeds this size (KB) |
 | `LOG_KEEP` | `5` | Number of rotated log files to keep |
 | `HC_PING_URL` | *(empty)* | [Healthchecks.io](https://healthchecks.io) ping URL. If empty, health checks are disabled |
+| `EXTRA_TOKENS` | `()` | Array of GitHub Personal Access Tokens for additional accounts |
 
 ## Usage
 
@@ -61,3 +62,19 @@ To get notified when backups fail or stop running:
 
 The script pings `/start` before the backup loop, then either the success URL or
 `/fail` depending on the result.
+
+### Multiple GitHub accounts
+
+To back up private repos from additional GitHub accounts:
+
+1. Create a [Personal Access Token](https://github.com/settings/tokens) on the extra account with the `repo` scope
+2. Add the token to the `EXTRA_TOKENS` array in `backup.conf`:
+   ```bash
+   EXTRA_TOKENS=("ghp_YourTokenHere")
+   ```
+3. For multiple extra accounts, add more entries:
+   ```bash
+   EXTRA_TOKENS=("ghp_FirstToken" "ghp_SecondToken")
+   ```
+
+The main `gh`-authenticated account is always queried first. If a repo is accessible from multiple accounts, the main account takes priority.
